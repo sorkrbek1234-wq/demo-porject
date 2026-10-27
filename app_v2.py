@@ -24,9 +24,11 @@ h1, h2, h3, p {
 </style>
 """, unsafe_allow_html=True)
 
-# 게임 시작 여부 세션 상태 관리
+# 세션 상태 관리 (게임 시작 여부 및 모바일 모드 설정)
 if "game_started" not in st.session_state:
     st.session_state.game_started = False
+if "is_mobile" not in st.session_state:
+    st.session_state.is_mobile = False
 
 # ==========================================
 # 1. 시작 전 (대기 / 안내) 화면
@@ -78,9 +80,18 @@ if not st.session_state.game_started:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("🚀 게임 시작", type="primary", use_container_width=True):
-        st.session_state.game_started = True
-        st.rerun()
+    # 게임 시작 버튼 및 모바일 전용 버튼
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        if st.button("🚀 게임 시작", type="primary", use_container_width=True):
+            st.session_state.game_started = True
+            st.session_state.is_mobile = False
+            st.rerun()
+    with btn_col2:
+        if st.button("📱 모바일 모드로 시작", use_container_width=True):
+            st.session_state.game_started = True
+            st.session_state.is_mobile = True
+            st.rerun()
 
 # ==========================================
 # 2. 게임 시작 후 (실제 게임) 화면
@@ -88,27 +99,31 @@ if not st.session_state.game_started:
 else:
     top_col1, top_col2 = st.columns([4, 1])
     with top_col1:
-        st.title("⚔️ TANK WAR - 전투 진행 중")
+        mode_text = " (📱 모바일 모드)" if st.session_state.is_mobile else ""
+        st.title(f"⚔️ TANK WAR - 전투 진행 중{mode_text}")
     with top_col2:
         if st.button("↩️ 메인 메뉴로", use_container_width=True):
             st.session_state.game_started = False
             st.rerun()
 
-    game_html = r"""
+    is_mobile_js = "true" if st.session_state.is_mobile else "false"
+
+    game_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
-      * { box-sizing: border-box; }
-      body {
+      * {{ box-sizing: border-box; -webkit-user-select: none; user-select: none; }}
+      body {{
         margin: 0;
         background: #101820;
         color: white;
         font-family: Arial, sans-serif;
         overflow: hidden;
-      }
-      #hud {
+      }}
+      #hud {{
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -119,8 +134,8 @@ else:
         border-radius: 10px 10px 0 0;
         font-weight: bold;
         font-size: 15px;
-      }
-      #game {
+      }}
+      #game {{
         display: block;
         width: 100%;
         height: auto;
@@ -129,15 +144,15 @@ else:
         border: 2px solid #52785b;
         outline: none;
         touch-action: none;
-      }
-      #help {
+      }}
+      #help {{
         font-size: 13px;
         color: #c9d8cc;
         text-align: center;
         padding: 8px;
         line-height: 1.6;
-      }
-      #restart {
+      }}
+      #restart {{
         margin-top: 6px;
         padding: 6px 16px;
         border: 1px solid #7fbd8a;
@@ -146,8 +161,52 @@ else:
         color: white;
         font-weight: bold;
         cursor: pointer;
-      }
-      #restart:hover { background: #31543d; }
+      }}
+      #restart:hover {{ background: #31543d; }}
+
+      /* 모바일 컨트롤러 스타일 */
+      #mobile-controls {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        background: #182820;
+        border: 2px solid #3c5a45;
+        border-radius: 12px;
+        margin-top: 10px;
+        gap: 15px;
+      }}
+      .p-controls {{
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }}
+      .ctrl-btn {{
+        width: 70px;
+        height: 55px;
+        border: none;
+        border-radius: 10px;
+        font-weight: bold;
+        font-size: 15px;
+        color: white;
+        cursor: pointer;
+        touch-action: manipulation;
+        box-shadow: 0 4px #000;
+        active: transform 0.1s;
+      }}
+      .ctrl-btn:active {{
+        transform: translateY(2px);
+        box-shadow: 0 2px #000;
+      }}
+      .btn-p1-move {{ background: #1b8a3e; border: 2px solid #3be86d; }}
+      .btn-p1-fire {{ background: #b8860b; border: 2px solid #ffd700; }}
+      .btn-p2-move {{ background: #aa2424; border: 2px solid #ff6e6e; }}
+      .btn-p2-fire {{ background: #b8860b; border: 2px solid #ffd700; }}
+      .p-title {{
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }}
     </style>
     </head>
     <body>
@@ -157,6 +216,28 @@ else:
         <span style="color:#ff7777">P2 HP: <span id="hp2">3</span> 🔴</span>
       </div>
       <canvas id="game" width="1000" height="650" tabindex="0"></canvas>
+      
+      <!-- 모바일 패널 (게임 창 하단) -->
+      <div id="mobile-controls" style="display: none;">
+        <!-- 1P 컨트롤러 (왼쪽 하단) -->
+        <div style="text-align: left;">
+          <div class="p-title" style="color:#69ff8c;">🟢 1P 조작</div>
+          <div class="p-controls">
+            <button class="ctrl-btn btn-p1-move" id="btn-p1-move">⬆️ 전진</button>
+            <button class="ctrl-btn btn-p1-fire" id="btn-p1-fire">💥 발사</button>
+          </div>
+        </div>
+
+        <!-- 2P 컨트롤러 (오른쪽 하단) -->
+        <div style="text-align: right;">
+          <div class="p-title" style="color:#ff7777;">🔴 2P 조작</div>
+          <div class="p-controls">
+            <button class="ctrl-btn btn-p2-move" id="btn-p2-move">⬆️ 전진</button>
+            <button class="ctrl-btn btn-p2-fire" id="btn-p2-fire">💥 발사</button>
+          </div>
+        </div>
+      </div>
+
       <div id="help">
         🟢 P1: W (전진) / SPACE (발사) &nbsp;|&nbsp; 🔴 P2: O (전진) / P (발사)
         <br>
@@ -164,7 +245,12 @@ else:
       </div>
 
     <script>
-    (() => {
+    (() => {{
+      const IS_MOBILE = {is_mobile_js};
+      if (IS_MOBILE) {{
+        document.getElementById('mobile-controls').style.display = 'flex';
+      }}
+
       const canvas = document.getElementById('game');
       const ctx = canvas.getContext('2d');
       const W = 1000, H = 650;
@@ -182,17 +268,15 @@ else:
 
       const obstacles = [];
 
-      function addRect(x, y, w, h, type='rock', hp=2) {
-        obstacles.push({x, y, w, h, type, hp});
-      }
+      function addRect(x, y, w, h, type='rock', hp=2) {{
+        obstacles.push({{x, y, w, h, type, hp}});
+      }}
 
-      // 맵 가장자리 벽 (부서지지 않음)
       addRect(0, 0, MW, 30, 'wall', 999);
       addRect(0, MH-30, MW, 30, 'wall', 999);
       addRect(0, 0, 30, MH, 'wall', 999);
       addRect(MW-30, 0, 30, MH, 'wall', 999);
 
-      // 장애물 배치 (기본 HP: 2)
       [
         [350, 200, 120, 50], [830, 200, 120, 50],
         [550, 400, 200, 50],
@@ -201,20 +285,20 @@ else:
       ].forEach(a => addRect(a[0], a[1], a[2], a[3], 'rock', 2));
 
       const tanks = [
-        {
+        {{
           x: 120, y: 120, angle: 0,
           color: '#42e66e', dark: '#167b37',
           key: 'w', fire: ' ', hp: 3, lastShot: -2000
-        },
-        {
+        }},
+        {{
           x: MW - 120, y: MH - 120, angle: Math.PI,
           color: '#ff5656', dark: '#9b2525',
           key: 'o', fire: 'p', hp: 3, lastShot: -2000
-        }
+        }}
       ];
 
-      function sound() {
-        try {
+      function sound() {{
+        try {{
           audio = audio || new (window.AudioContext || window.webkitAudioContext)();
           if (audio.state === 'suspended') audio.resume();
 
@@ -234,29 +318,29 @@ else:
           gain.connect(audio.destination);
           osc.start(t);
           osc.stop(t + 0.25);
-        } catch(e) {}
-      }
+        }} catch(e) {{}}
+      }}
 
-      function circleRect(cx, cy, r, o) {
+      function circleRect(cx, cy, r, o) {{
         const px = Math.max(o.x, Math.min(cx, o.x + o.w));
         const py = Math.max(o.y, Math.min(cy, o.y + o.h));
         const dx = cx - px, dy = cy - py;
         return dx*dx + dy*dy < r*r;
-      }
+      }}
 
-      function blocked(x, y, r) {
+      function blocked(x, y, r) {{
         if (x < r || y < r || x > MW-r || y > MH-r) return true;
         return obstacles.some(o => o.hp > 0 && circleRect(x, y, r, o));
-      }
+      }}
 
-      function tankBlocked(t, x, y) {
+      function tankBlocked(t, x, y) {{
         if (blocked(x,y,15)) return true;
         return tanks.some(other =>
           other !== t && Math.hypot(other.x-x, other.y-y) < 32
         );
-      }
+      }}
 
-      function shoot(t, index) {
+      function shoot(t, index) {{
         if (now - t.lastShot < 2000) return;
         t.lastShot = now;
 
@@ -264,49 +348,45 @@ else:
         const sx = t.x + Math.cos(a)*27;
         const sy = t.y + Math.sin(a)*27;
 
-        bullets.push({
+        bullets.push({{
           x:sx, y:sy,
           vx:Math.cos(a)*7.2,
           vy:Math.sin(a)*7.2,
           owner:index,
           life:220
-        });
+        }});
 
         sound();
 
-        for(let i=0;i<7;i++) {
-          particles.push({
+        for(let i=0;i<7;i++) {{
+          particles.push({{
             x:sx, y:sy,
             vx:(Math.random()-.5)*3,
             vy:(Math.random()-.5)*3,
             life:16,
             color:'#ffcf73'
-          });
-        }
-      }
+          }});
+        }}
+      }}
 
-      function drawTank(t) {
+      function drawTank(t) {{
         ctx.save();
         ctx.translate(t.x,t.y);
         ctx.rotate(t.angle);
 
-        // 궤도
         ctx.fillStyle = '#222a27';
         ctx.fillRect(-18,-13,36,8);
         ctx.fillRect(-18,5,36,8);
 
-        // 몸체
         ctx.fillStyle = t.dark;
         ctx.fillRect(-15,-10,30,20);
 
         ctx.fillStyle = t.color;
         ctx.fillRect(-12,-8,24,16);
 
-        // 포신
         ctx.fillStyle = '#d6ded8';
         ctx.fillRect(1,-3,27,6);
 
-        // 포탑
         ctx.fillStyle = t.dark;
         ctx.beginPath();
         ctx.arc(0,0,7,0,Math.PI*2);
@@ -319,24 +399,23 @@ else:
         ctx.textAlign = 'center';
         ctx.fillText(t===tanks[0]?'P1':'P2',t.x,t.y-23);
 
-        // 체력 표시
         ctx.fillStyle = '#1b1b1b';
         ctx.fillRect(t.x-17,t.y+19,34,5);
         ctx.fillStyle = t.color;
         ctx.fillRect(t.x-17,t.y+19,34*Math.max(0,t.hp)/3,5);
-      }
+      }}
 
-      function drawObstacle(o) {
-        if (o.hp <= 0) return; // 부서진 장애물은 그리지 않음
+      function drawObstacle(o) {{
+        if (o.hp <= 0) return;
 
-        if(o.type==='wall') {
+        if(o.type==='wall') {{
           ctx.fillStyle='#59665a';
           ctx.fillRect(o.x,o.y,o.w,o.h);
           ctx.strokeStyle='#829184';
           ctx.lineWidth=2;
           ctx.strokeRect(o.x,o.y,o.w,o.h);
           return;
-        }
+        }}
 
         ctx.fillStyle='#25342b';
         ctx.fillRect(o.x+4,o.y+5,o.w,o.h);
@@ -351,107 +430,103 @@ else:
         ctx.lineWidth=2;
         ctx.strokeRect(o.x,o.y,o.w,o.h);
 
-        // 1번 맞아서 HP가 1 남았을 때 (금 간 표현)
-        if (o.hp === 1) {
+        if (o.hp === 1) {{
           ctx.strokeStyle = '#1a261e';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          // X자 형태의 금무늬 추가
           ctx.moveTo(o.x + o.w * 0.2, o.y + o.h * 0.2);
           ctx.lineTo(o.x + o.w * 0.8, o.y + o.h * 0.8);
           ctx.moveTo(o.x + o.w * 0.8, o.y + o.h * 0.2);
           ctx.lineTo(o.x + o.w * 0.2, o.y + o.h * 0.8);
           ctx.stroke();
-        }
-      }
+        }}
+      }}
 
-      function update(dt) {
+      function update(dt) {{
         if(!running) return;
 
         const speed = 3.3 * dt;
         const rotationSpeed = 0.021 * dt;
 
-        tanks.forEach((t,i) => {
+        tanks.forEach((t,i) => {{
           const moving = keys.has(t.key);
 
-          if(moving) {
+          if(moving) {{
             const nx = t.x + Math.cos(t.angle)*speed;
             const ny = t.y + Math.sin(t.angle)*speed;
 
-            if(!tankBlocked(t,nx,ny)) {
+            if(!tankBlocked(t,nx,ny)) {{
               t.x=nx;
               t.y=ny;
-            }
-          } else {
+            }}
+          }} else {{
             t.angle += rotationSpeed;
-          }
+          }}
 
           if(keys.has(t.fire)) shoot(t,i);
-        });
+        }});
 
-        bullets.forEach(b => {
+        bullets.forEach(b => {{
           b.x += b.vx*dt;
           b.y += b.vy*dt;
           b.life -= dt;
 
-          // 장애물 충돌 검사
-          obstacles.forEach(o => {
-            if (o.hp > 0 && circleRect(b.x, b.y, 4, o)) {
-              b.life = 0; // 총알 소멸
+          obstacles.forEach(o => {{
+            if (o.hp > 0 && circleRect(b.x, b.y, 4, o)) {{
+              b.life = 0;
               
-              if (o.type !== 'wall') {
-                o.hp--; // 장애물 내구도 감소 (2 -> 1 -> 0)
+              if (o.type !== 'wall') {{
+                o.hp--;
                 
-                // 파편 효과 발생
-                for(let k=0; k<8; k++) {
-                  particles.push({
+                for(let k=0; k<8; k++) {{
+                  particles.push({{
                     x: b.x, y: b.y,
                     vx: (Math.random() - .5) * 5,
                     vy: (Math.random() - .5) * 5,
                     life: 20,
                     color: '#83977b'
-                  });
-                }
-              }
-            }
-          });
+                  }});
+                }}
+              }}
+            }}
+          }});
 
           if(blocked(b.x,b.y,4)) b.life=0;
 
-          tanks.forEach((t,i) => {
-            if(i!==b.owner && t.hp>0 && Math.hypot(t.x-b.x,t.y-b.y)<17) {
+          tanks.forEach((t,i) => {{
+            if(i!==b.owner && t.hp>0 && Math.hypot(t.x-b.x,t.y-b.y)<17) {{
               t.hp--;
               b.life=0;
 
-              for(let k=0;k<16;k++) {
-                particles.push({
+              for(let k=0;k<16;k++) {{
+                particles.push({{
                   x:b.x,y:b.y,
                   vx:(Math.random()-.5)*6,
                   vy:(Math.random()-.5)*6,
                   life:25,
                   color:Math.random()>.5?'#ffb347':'#ff6262'
-                });
-              }
+                }});
+              }}
 
-              if(t.hp<=0) {
+              if(t.hp<=0) {{
                 winner = i===0 ? '🔴 P2 승리!' : '🟢 P1 승리!';
                 running=false;
-              }
-            }
-          });
-        });
+              }}
+            }}
+          }});
+        }});
 
         bullets=bullets.filter(b=>b.life>0);
 
-        particles.forEach(p=>{
+        particles.forEach(p=>{{
           p.x+=p.vx*dt;
           p.y+=p.vy*dt;
           p.life-=dt;
-        });
+        }});
         particles=particles.filter(p=>p.life>0);
-      }
+      }}
 
-      function render() {
+      function render() {{
         ctx.clearRect(0,0,W,H);
         ctx.save();
 
@@ -477,22 +552,21 @@ else:
         ctx.fillStyle='#344b38';
         ctx.fillRect(0,0,MW,MH);
 
-        // 바닥 격자
         ctx.strokeStyle='rgba(210,235,200,0.09)';
         ctx.lineWidth=1;
-        for(let x=0;x<=MW;x+=50) {
+        for(let x=0;x<=MW;x+=50) {{
           ctx.beginPath();
           ctx.moveTo(x,0); ctx.lineTo(x,MH); ctx.stroke();
-        }
-        for(let y=0;y<=MH;y+=50) {
+        }}
+        for(let y=0;y<=MH;y+=50) {{
           ctx.beginPath();
           ctx.moveTo(0,y); ctx.lineTo(MW,y); ctx.stroke();
-        }
+        }}
 
         obstacles.forEach(drawObstacle);
         tanks.forEach(drawTank);
 
-        bullets.forEach(b=>{
+        bullets.forEach(b=>{{
           ctx.fillStyle='#ffdb69';
           ctx.beginPath();
           ctx.arc(b.x,b.y,5,0,Math.PI*2);
@@ -504,15 +578,15 @@ else:
           ctx.moveTo(b.x-b.vx*1.7,b.y-b.vy*1.7);
           ctx.lineTo(b.x,b.y);
           ctx.stroke();
-        });
+        }});
 
-        particles.forEach(p=>{
+        particles.forEach(p=>{{
           ctx.globalAlpha=Math.max(0,p.life/25);
           ctx.fillStyle=p.color;
           ctx.beginPath();
           ctx.arc(p.x,p.y,3,0,Math.PI*2);
           ctx.fill();
-        });
+        }});
         ctx.globalAlpha=1;
 
         ctx.restore();
@@ -524,9 +598,9 @@ else:
         const cd2=Math.max(0,2-(now-tanks[1].lastShot)/1000);
 
         document.getElementById('status').textContent =
-          winner || `P1 쿨타임 ${cd1.toFixed(1)}s | P2 쿨타임 ${cd2.toFixed(1)}s`;
+          winner || `P1 쿨타임 ${{cd1.toFixed(1)}}s | P2 쿨타임 ${{cd2.toFixed(1)}}s`;
 
-        if(!running) {
+        if(!running) {{
           ctx.fillStyle='rgba(0,0,0,0.72)';
           ctx.fillRect(0,0,W,H);
           ctx.textAlign='center';
@@ -535,51 +609,81 @@ else:
           ctx.fillText(winner,W/2,H/2-10);
           ctx.font='18px Arial';
           ctx.fillText('아래 [🔄 판 다시 시작] 버튼을 누르면 재경기할 수 있습니다.',W/2,H/2+35);
-        }
-      }
+        }}
+      }}
 
-      function frame(ts) {
+      function frame(ts) {{
         const dt=Math.min(2.5,(ts-last)/16.667);
         last=ts;
         now=ts;
         update(dt);
         render();
         requestAnimationFrame(frame);
-      }
+      }}
 
-      function normalizeKey(e) {
+      function normalizeKey(e) {{
         if(e.code==='Space') return ' ';
         return e.key.toLowerCase();
-      }
+      }}
 
-      window.addEventListener('keydown',e=>{
+      window.addEventListener('keydown',e=>{{
         const k=normalizeKey(e);
-        if(['w','o','p',' '].includes(k)) {
+        if(['w','o','p',' '].includes(k)) {{
           e.preventDefault();
           keys.add(k);
-          if(k===' ' || k==='p') {
+          if(k===' ' || k==='p') {{
             if(audio && audio.state==='suspended') audio.resume();
-          }
-        }
-      },{passive:false});
+          }}
+        }}
+      }},{{passive:false}});
 
-      window.addEventListener('keyup',e=>{
+      window.addEventListener('keyup',e=>{{
         keys.delete(normalizeKey(e));
-      });
+      }});
 
       window.addEventListener('blur',()=>keys.clear());
 
-      document.addEventListener('visibilitychange',()=>{
+      document.addEventListener('visibilitychange',()=>{{
         if(document.hidden) keys.clear();
-      });
+      }});
+
+      // 모바일 버튼 터치 바인딩 함수
+      function bindTouchButton(elementId, keyName) {{
+        const btn = document.getElementById(elementId);
+        if (!btn) return;
+
+        const startAction = (e) => {{
+          e.preventDefault();
+          keys.add(keyName);
+          if ((keyName === ' ' || keyName === 'p') && audio && audio.state === 'suspended') {{
+            audio.resume();
+          }}
+        }};
+
+        const endAction = (e) => {{
+          e.preventDefault();
+          keys.delete(keyName);
+        }};
+
+        btn.addEventListener('pointerdown', startAction);
+        btn.addEventListener('pointerup', endAction);
+        btn.addEventListener('pointercancel', endAction);
+        btn.addEventListener('touchstart', startAction, {{passive: false}});
+        btn.addEventListener('touchend', endAction, {{passive: false}});
+      }}
+
+      bindTouchButton('btn-p1-move', 'w');
+      bindTouchButton('btn-p1-fire', ' ');
+      bindTouchButton('btn-p2-move', 'o');
+      bindTouchButton('btn-p2-fire', 'p');
 
       canvas.addEventListener('pointerdown',()=>canvas.focus());
 
       requestAnimationFrame(frame);
-    })();
+    }})();
     </script>
     </body>
     </html>
     """
 
-    components.html(game_html, height=750, scrolling=False)
+    components.html(game_html, height=880 if st.session_state.is_mobile else 750, scrolling=False)
